@@ -30,6 +30,7 @@ export interface SubtitleTrack {
 
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15";
+const YT_CONSENT_COOKIE = "CONSENT=YES+cb.20210328-17-p0.en+FX+471";
 
 /**
  * Extract the video ID from various YouTube URL formats.
@@ -95,6 +96,14 @@ function extractJsonAfterPrefix(text: string, prefix: string): unknown {
   throw new Error("Could not extract complete JSON object from page HTML");
 }
 
+function tryExtractJsonAfterPrefix(text: string, prefix: string): unknown | null {
+  try {
+    return extractJsonAfterPrefix(text, prefix);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Safely traverse a nested object by dot-separated path.
  */
@@ -135,21 +144,38 @@ function formatPublishDateToUTC8(dateStr: string): string {
 // ---------------------------------------------------------------------------
 
 async function fetchWatchPageHtml(videoId: string): Promise<string> {
-  const url = `https://www.youtube.com/watch?v=${videoId}`;
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent": USER_AGENT,
-      "Accept-Language": "en-US,en;q=0.9",
-      // Explicitly prevent compressed responses so we get plain text.
-      "Accept-Encoding": "identity",
-    },
-  });
+  const urls = [
+    `https://www.youtube.com/watch?v=${videoId}&hl=en&bpctr=9999999999&has_verified=1`,
+    `https://www.youtube.com/watch?v=${videoId}`,
+    `https://m.youtube.com/watch?v=${videoId}&hl=en&bpctr=9999999999&has_verified=1`,
+  ];
 
-  if (!res.ok) {
-    throw new Error(`Failed to fetch YouTube page: ${res.status} ${res.statusText}`);
+  let lastError = "Unknown error";
+
+  for (const url of urls) {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": USER_AGENT,
+        "Accept-Language": "en-US,en;q=0.9",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        Cookie: YT_CONSENT_COOKIE,
+      },
+    });
+
+    if (!res.ok) {
+      lastError = `Failed to fetch YouTube page: ${res.status} ${res.statusText}`;
+      continue;
+    }
+
+    const html = await res.text();
+    if (html.includes("ytInitialPlayerResponse")) {
+      return html;
+    }
+
+    lastError = "YouTube page did not contain ytInitialPlayerResponse";
   }
 
-  return res.text();
+  throw new Error(lastError);
 }
 
 // ---------------------------------------------------------------------------
@@ -161,15 +187,25 @@ function parseVideoInfo(html: string): {
   visitorData: string;
   sts: number;
 } {
-  // Extract ytInitialPlayerResponse JSON
-  const playerResponse = extractJsonAfterPrefix(
-    html,
-    "var ytInitialPlayerResponse = "
-  ) as any;
+  const playerResponse =
+    (tryExtractJsonAfterPrefix(html, "var ytInitialPlayerResponse = ") as any) ??
+    (tryExtractJsonAfterPrefix(html, "ytInitialPlayerResponse = ") as any) ??
+    (tryExtractJsonAfterPrefix(html, '"ytInitialPlayerResponse":') as any);
+
+  if (!playerResponse) {
+    throw new Error("Could not parse ytInitialPlayerResponse from page HTML");
+  }
 
   const videoDetails = playerResponse?.videoDetails;
   if (!videoDetails) {
-    throw new Error("Could not find videoDetails in ytInitialPlayerResponse");
+    const reason =
+      getNestedValue(playerResponse, "playabilityStatus.reason") ??
+      getNestedValue(playerResponse, "playabilityStatus.messages.0");
+    throw new Error(
+      `Could not find videoDetails in ytInitialPlayerResponse${
+        reason ? ` (playabilityStatus: ${reason})` : ""
+      }`
+    );
   }
 
   const rawPublishDate: string =
