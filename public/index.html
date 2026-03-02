@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube Info MCP Server</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 60px auto; padding: 0 20px; color: #333; }
+    h1 { font-size: 1.5rem; }
+    code { background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+    pre { background: #f0f0f0; padding: 16px; border-radius: 8px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>YouTube Info MCP Server</h1>
+  <p>This is a <a href="https://modelcontextprotocol.io/">Model Context Protocol (MCP)</a> server that fetches YouTube video information.</p>
+  <h2>MCP Endpoint</h2>
+  <p><code>POST /mcp</code></p>
+  <h2>Available Tool</h2>
+  <p><strong>get-youtube-video-info</strong> - Fetches YouTube video metadata and optional subtitles.</p>
+  <h3>Parameters</h3>
+  <ul>
+    <li><code>url</code> (string, required) - YouTube video URL</li>
+    <li><code>includeSubtitles</code> (boolean, optional) - Whether to include subtitles, defaults to false</li>
+  </ul>
+  <h2>Usage with Claude Desktop</h2>
+  <pre>{
+  "mcpServers": {
+    "youtube-info": {
+      "command": "npx",
+      "args": [
+        "mcp-remote@next",
+        "https://&lt;your-site&gt;.netlify.app/mcp"
+      ]
+    }
+  }
+}</pre>
+</body>
+</html>
